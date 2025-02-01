@@ -1,10 +1,17 @@
 package com.example.composetutorialoulu
 
 import SampleData
+import android.content.Context
 import android.content.res.Configuration
+import android.net.Uri
 import android.os.Bundle
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Image
@@ -38,6 +45,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -47,18 +55,66 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.*
+import coil.compose.rememberAsyncImagePainter
 import com.example.composetutorialoulu.ui.theme.ComposeTutorialOuluTheme
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import java.io.File
+import java.io.FileOutputStream
+import java.io.InputStream
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             AppNavigation()
+        }
+    }
+}
+
+val Context.dataStore by preferencesDataStore(name = "user_prefs")
+
+class UserRepository(private val context: Context) {
+    private val usernameKey = stringPreferencesKey("username")
+    val usernameFlow: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[usernameKey] ?: ""
+    }
+
+    suspend fun saveUsername(username: String) {
+        context.dataStore.edit { prefs ->
+            prefs[usernameKey] = username
+        }
+    }
+}
+
+// ViewModel to manage UI state
+class UserViewModel(private val repository: UserRepository) : ViewModel() {
+    private val _username = MutableStateFlow("Username")
+    val username: StateFlow<String> = _username.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            repository.usernameFlow.collect { name ->
+                _username.value = name.ifEmpty { "Username" }
+            }
+        }
+    }
+
+    fun saveUsername(username: String) {
+        viewModelScope.launch {
+            repository.saveUsername(username)
         }
     }
 }
@@ -71,10 +127,10 @@ object Routes{
 }
 
 @Composable
-fun Conversation(messages: List<Message>){
+fun Conversation(messages: List<Message>, viewModel: UserViewModel){
     LazyColumn {
         items(messages){ message ->
-            MessageCard(message)
+            MessageCard(message, viewModel)
         }
     }
 }
@@ -83,12 +139,16 @@ fun Conversation(messages: List<Message>){
 @Composable
 fun PreviewConversation(){
     ComposeTutorialOuluTheme {
-        Conversation(SampleData.conversationSample)
+        val context = LocalContext.current
+        val userRepository = remember { UserRepository(context) }
+        val viewModel = remember { UserViewModel(userRepository) }
+        Conversation(SampleData.conversationSample, viewModel)
     }
 }
 
 @Composable
-fun MessageCard(msg: Message) {
+fun MessageCard(msg: Message, viewModel: UserViewModel) {
+    val username by viewModel.username.collectAsState(initial = "User")
     // FOR PADDING
     Row(modifier = Modifier.padding(all = 8.dp)){
         Image(
@@ -117,7 +177,7 @@ fun MessageCard(msg: Message) {
         // Toggle when click
         Column(modifier = Modifier.clickable { isExpanded = !isExpanded }) {
             Text(
-                text = msg.author,
+                text = username,
                 color = MaterialTheme.colorScheme.secondary,
                 style = MaterialTheme.typography.titleSmall
                 )
@@ -150,9 +210,13 @@ fun MessageCard(msg: Message) {
 @Composable
 fun PreviewMessageCard() {
     ComposeTutorialOuluTheme {
+        val context = LocalContext.current
+        val userRepository = remember { UserRepository(context) }
+        val viewModel = remember { UserViewModel(userRepository) }
         Surface {
             MessageCard(
-                msg = Message("Lexi", "Hey, take a look at Jetpack Compose, it's great!")
+                msg = Message("Lexi", "Hey, take a look at Jetpack Compose, it's great!"),
+                viewModel
             )
         }
     }
@@ -193,34 +257,40 @@ fun IconButton(
 @Composable
 fun AppNavigation(){
     val navController = rememberNavController()
+    val context = LocalContext.current
     val messages = SampleData.conversationSample
+    val userRepository = remember { UserRepository(context) }
+    val viewModel = remember { UserViewModel(userRepository) }
     NavHost(
         navController = navController,
         startDestination = Routes.MAIN_VIEW
     ){
         composable(Routes.MAIN_VIEW){
-            MainView(navController, messages)
+            MainView(navController, messages, viewModel)
         }
         composable(Routes.SECOND_VIEW){
-            SecondView(navController)
+            SecondView(navController, viewModel)
         }
     }
 
 }
 
 @Composable
-fun MainView(navController: NavHostController, messages: List<Message>) {
+fun MainView(navController: NavHostController, messages: List<Message>, viewModel: UserViewModel) {
     Column {
         IconButton({ navController.navigate(Routes.SECOND_VIEW) },
             Icons.Default.Settings,
             Alignment.CenterEnd,
             5.dp)
-        Conversation(messages)
+        Conversation(messages, viewModel)
     }
 }
 
 @Composable
-fun SecondView(navController: NavHostController) {
+fun SecondView(navController: NavHostController, viewModel: UserViewModel) {
+    val username by viewModel.username.collectAsState(initial = "")
+    var newName by remember { mutableStateOf(username) }
+
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
             modifier = Modifier
@@ -257,7 +327,6 @@ fun SecondView(navController: NavHostController) {
                 Image(
                     painter = painterResource(R.drawable.profile_picture),
                     contentDescription = "Contact profile picture",
-                    // DP for Image size and clip for shape
                     modifier = Modifier
                         .fillMaxSize()
                         .clip(CircleShape)
@@ -268,18 +337,22 @@ fun SecondView(navController: NavHostController) {
 
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "User Name",
+                text = username,
                 style = MaterialTheme.typography.bodyLarge
             )
 
             Spacer(modifier = Modifier.height(8.dp))
-            // TODO Later
             OutlinedTextField(
-                value = "",
-                onValueChange = {}, // Not implemented yet
+                value = newName,
+                onValueChange = {
+                    newName = it
+                },
                 label = { Text("Enter new name") },
                 modifier = Modifier.fillMaxWidth()
             )
+            Button(onClick = { viewModel.saveUsername(newName) }) {
+                Text("Save")
+            }
         }
     }
 }

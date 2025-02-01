@@ -44,6 +44,7 @@ dependencies {
     val nav_version = "2.8.5"
     // Jetpack Compose integration
     implementation("androidx.navigation:navigation-compose:$nav_version")
+    implementation("androidx.datastore:datastore-preferences:1.1.2")
 
     // Views/Fragments integration
     implementation("androidx.navigation:navigation-fragment:$nav_version")
@@ -57,6 +58,8 @@ dependencies {
 
     // JSON serialization library, works with the Kotlin serialization plugin
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("io.coil-kt:coil-compose:2.6.0")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
