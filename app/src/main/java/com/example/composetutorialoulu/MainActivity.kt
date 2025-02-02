@@ -38,6 +38,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -56,7 +57,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -73,7 +73,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
-import java.io.InputStream
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -88,8 +87,14 @@ val Context.dataStore by preferencesDataStore(name = "user_prefs")
 
 class UserRepository(private val context: Context) {
     private val usernameKey = stringPreferencesKey("username")
+    private val profileImageUriKey = stringPreferencesKey("profile_image_uri")
+
     val usernameFlow: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[usernameKey] ?: ""
+    }
+
+    val profileImageUriFlow: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[profileImageUriKey] ?: ""
     }
 
     suspend fun saveUsername(username: String) {
@@ -97,6 +102,28 @@ class UserRepository(private val context: Context) {
             prefs[usernameKey] = username
         }
     }
+
+    private suspend fun saveProfileImageUri(uri: String){
+        context.dataStore.edit { prefs ->
+            prefs[profileImageUriKey] = uri
+        }
+    }
+
+    suspend fun saveProfileImage(uri: Uri) {
+        val file = saveImageToInternalStorage(uri)
+        saveProfileImageUri(file.absolutePath)
+    }
+
+    private fun saveImageToInternalStorage(uri: Uri): File {
+        val file = File(context.filesDir, "profile_image.jpg")
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            FileOutputStream(file).use { output ->
+                input.copyTo(output)
+            }
+        }
+        return file
+    }
+
 }
 
 // ViewModel to manage UI state
@@ -104,10 +131,18 @@ class UserViewModel(private val repository: UserRepository) : ViewModel() {
     private val _username = MutableStateFlow("Username")
     val username: StateFlow<String> = _username.asStateFlow()
 
+    private val _profileImageUri = MutableStateFlow("")
+    val profileImageUri: StateFlow<String> = _profileImageUri.asStateFlow()
+
     init {
         viewModelScope.launch {
             repository.usernameFlow.collect { name ->
                 _username.value = name.ifEmpty { "Username" }
+            }
+        }
+        viewModelScope.launch {
+            repository.profileImageUriFlow.collect { uri ->
+                _profileImageUri.value = uri
             }
         }
     }
@@ -115,6 +150,12 @@ class UserViewModel(private val repository: UserRepository) : ViewModel() {
     fun saveUsername(username: String) {
         viewModelScope.launch {
             repository.saveUsername(username)
+        }
+    }
+
+    fun saveProfileImageUri(uri: Uri){
+        viewModelScope.launch {
+            repository.saveProfileImage(uri)
         }
     }
 }
@@ -149,17 +190,30 @@ fun PreviewConversation(){
 @Composable
 fun MessageCard(msg: Message, viewModel: UserViewModel) {
     val username by viewModel.username.collectAsState(initial = "User")
+    val profileImage by viewModel.profileImageUri.collectAsState(initial = "")
     // FOR PADDING
     Row(modifier = Modifier.padding(all = 8.dp)){
-        Image(
-            painter = painterResource(R.drawable.profile_picture),
-            contentDescription = "Contact profile picture",
-            // DP for Image size and clip for shape
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .border(1.5.dp, MaterialTheme.colorScheme.primary, CircleShape)
+        if (profileImage.isNotEmpty()){
+            Image(
+                painter = rememberAsyncImagePainter(File(profileImage)),
+                contentDescription = "Profile Image",
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .border(1.5.dp, MaterialTheme.colorScheme.primary, CircleShape)
             )
+        }else {
+            Icon(
+                imageVector = Icons.Default.Person,
+                contentDescription = "Default Profile",
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Color.Gray)
+                    .border(1.5.dp,MaterialTheme.colorScheme.primary, CircleShape),
+                tint = Color.White
+            )
+        }
 
         // Space between image and column
         Spacer(modifier = Modifier.width(8.dp))
@@ -173,7 +227,6 @@ fun MessageCard(msg: Message, viewModel: UserViewModel) {
             label = "",
         )
 
-
         // Toggle when click
         Column(modifier = Modifier.clickable { isExpanded = !isExpanded }) {
             Text(
@@ -186,12 +239,13 @@ fun MessageCard(msg: Message, viewModel: UserViewModel) {
                 shape = MaterialTheme.shapes.medium,
                 shadowElevation = 1.dp,
                 color = surfaceColor,
-                modifier = Modifier.animateContentSize().padding(1.dp)
+                modifier = Modifier
+                    .animateContentSize()
+                    .padding(1.dp)
             ){
                 Text(
                     text = msg.body,
                     modifier = Modifier.padding(all = 4.dp),
-                    // Check state
                     maxLines = if (isExpanded) Int.MAX_VALUE else 1,
                     style = MaterialTheme.typography.bodyMedium
                 )
@@ -291,6 +345,16 @@ fun SecondView(navController: NavHostController, viewModel: UserViewModel) {
     val username by viewModel.username.collectAsState(initial = "")
     var newName by remember { mutableStateOf(username) }
 
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent(),
+        onResult = { uri ->
+            uri?.let {
+                viewModel.saveProfileImageUri(it)
+            }
+        }
+    )
+    val profileImage by viewModel.profileImageUri.collectAsState(initial = "")
+
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
             modifier = Modifier
@@ -321,18 +385,27 @@ fun SecondView(navController: NavHostController, viewModel: UserViewModel) {
                 modifier = Modifier
                     .size(100.dp)
                     .clip(CircleShape)
-                    .background(Color.Gray),
+                    .background(Color.Gray)
+                    .clickable { imagePickerLauncher.launch("image/*") },
                 contentAlignment = Alignment.Center,
             ) {
-                Image(
-                    painter = painterResource(R.drawable.profile_picture),
-                    contentDescription = "Contact profile picture",
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(CircleShape)
-                        .border(1.5.dp, MaterialTheme.colorScheme.primary, CircleShape)
-                )
-
+                if (profileImage.isNotEmpty()){
+                    Image(
+                        painter = rememberAsyncImagePainter(File(profileImage)),
+                        contentDescription = "Profile Image",
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(CircleShape)
+                            .border(1.5.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                    )
+                }else {
+                    Icon(
+                        imageVector = Icons.Default.Person,
+                        contentDescription = "Default Profile",
+                        modifier = Modifier.size(48.dp),
+                        tint = Color.White
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
