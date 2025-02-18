@@ -1,4 +1,4 @@
-import com.example.composetutorialoulu.Message
+import com.example.composetutorialoulu.models.Message
 
 /**
  * SampleData for Jetpack Compose Tutorial 
