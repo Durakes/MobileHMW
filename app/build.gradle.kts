@@ -41,7 +41,12 @@ android {
 }
 
 dependencies {
-    val nav_version = "2.8.5"
+    val nav_version = "2.8.8"
+
+    implementation(platform("androidx.compose:compose-bom:2023.10.01"))
+    implementation("androidx.activity:activity-compose")
+    implementation("androidx.compose.foundation:foundation")
+    implementation("androidx.compose.material:material")
     // Jetpack Compose integration
     implementation("androidx.navigation:navigation-compose:$nav_version")
     implementation("androidx.datastore:datastore-preferences:1.1.2")
@@ -55,6 +60,10 @@ dependencies {
 
     // Testing Navigation
     androidTestImplementation("androidx.navigation:navigation-testing:$nav_version")
+
+    implementation (libs.androidx.lifecycle.runtime.ktx.v287)
+    implementation (libs.androidx.lifecycle.viewmodel.ktx)
+    implementation ("androidx.activity:activity-ktx:1.8.0")
 
     // JSON serialization library, works with the Kotlin serialization plugin
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")

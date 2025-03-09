@@ -17,6 +17,9 @@ class UserViewModel(private val repository: UserRepository) : ViewModel() {
     private val _profileImageUri = MutableStateFlow("")
     val profileImageUri: StateFlow<String> = _profileImageUri.asStateFlow()
 
+    private val _cameraImageUri = MutableStateFlow("")
+    val cameraImageUri: StateFlow<String> = _cameraImageUri.asStateFlow()
+
     init {
         viewModelScope.launch {
             repository.usernameFlow.collect { name ->
@@ -26,6 +29,12 @@ class UserViewModel(private val repository: UserRepository) : ViewModel() {
         viewModelScope.launch {
             repository.profileImageUriFlow.collect { uri ->
                 _profileImageUri.value = uri
+            }
+        }
+
+        viewModelScope.launch {
+            repository.cameraImageUriFlow.collect { uri ->
+                _cameraImageUri.value = uri
             }
         }
     }
@@ -39,6 +48,12 @@ class UserViewModel(private val repository: UserRepository) : ViewModel() {
     fun saveProfileImageUri(uri: Uri) {
         viewModelScope.launch {
             repository.saveProfileImage(uri)
+        }
+    }
+
+    fun saveCameraImageUri(uri: Uri){
+        viewModelScope.launch {
+            repository.saveCameraImage(uri)
         }
     }
 }

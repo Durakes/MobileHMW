@@ -16,6 +16,7 @@ val Context.dataStore by preferencesDataStore(name = "user_prefs")
 class UserRepository(private val context: Context) {
     private val usernameKey = stringPreferencesKey("username")
     private val profileImageUriKey = stringPreferencesKey("profile_image_uri")
+    private val cameraImageUriKey = stringPreferencesKey("camera_image_uri")
 
     val usernameFlow: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[usernameKey] ?: ""
@@ -23,6 +24,10 @@ class UserRepository(private val context: Context) {
 
     val profileImageUriFlow: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[profileImageUriKey] ?: ""
+    }
+
+    val cameraImageUriFlow: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[cameraImageUriKey] ?: ""
     }
 
     suspend fun saveUsername(username: String) {
@@ -37,13 +42,24 @@ class UserRepository(private val context: Context) {
         }
     }
 
+    private suspend fun saveCameraImageUri(uri: String) {
+        context.dataStore.edit { prefs ->
+            prefs[cameraImageUriKey] = uri
+        }
+    }
+
     suspend fun saveProfileImage(uri: Uri) {
-        val file = saveImageToInternalStorage(uri)
+        val file = saveImageToInternalStorage(uri, "profile_image.jpg")
         saveProfileImageUri(file.absolutePath)
     }
 
-    private fun saveImageToInternalStorage(uri: Uri): File {
-        val file = File(context.filesDir, "profile_image.jpg")
+    suspend fun saveCameraImage(uri: Uri){
+        val file = saveImageToInternalStorage(uri, "camera_image.jpg")
+        saveCameraImageUri(file.absolutePath)
+    }
+
+    private fun saveImageToInternalStorage(uri: Uri, fileName: String): File {
+        val file = File(context.filesDir, fileName)
         context.contentResolver.openInputStream(uri)?.use { input ->
             FileOutputStream(file).use { output ->
                 input.copyTo(output)
